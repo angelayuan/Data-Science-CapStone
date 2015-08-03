@@ -1,0 +1,8 @@
+name: NextWordPrediction
+account: angelayuan
+server: shinyapps.io
+bundleId: 231365
+url: https://angelayuan.shinyapps.io/NextWordPrediction
+when: 1438626205.81882
+asMultiple: FALSE
+asStatic: FALSE

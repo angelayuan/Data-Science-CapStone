@@ -1,0 +1,160 @@
+Data Science CapStone: MileStone Report
+========================================
+author: **angelayuan**  
+date: **Sunday, Jul 26, 2015**
+
+## Synopsis
+Nowadays, people are spending a lot of time on their mobile devices in a whole range of activities. But typing on mobile devices can be a serious pain. The aim of the current project is to build a predictive text product in which the product should predict the next word based on user's input.
+
+The aim of this report is to display that I've gotten used to working with the data and that I am on track to create my prediction algorithm. In this report, you will mainly see (1) exploratory analysis of the data sets; (2) basic report of summary statistics about the data sets; and (3) interesting findings that I amaased so far.
+
+## Exploratory Analysis
+### Load in useful packages
+```{r, warning=FALSE, message=FALSE}
+library(tm) # for text mining
+library(SnowballC) # for stemming
+library(RWeka) # for tokenization
+library(wordcloud) # for wordcloud plotting
+library(ggplot2) # for plotting
+```
+
+### Load the data sets and check basic information
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+blogs <- readLines("./en_US/en_US.blogs.txt")
+twitter <- readLines("./en_US/en_US.twitter.txt")
+news <- readLines("./en_US/en_US.news.txt")
+
+blogLines <- length(blogs)
+twitterLines <- length(twitter)
+newsLines <- length(news)
+c(blogLines,twitterLines,newsLines)
+```
+
+We can see that the original data sets are fairly large, containing 899288 lines in blog data, 2360148 lines in twitter data, and 77259 lines in news data. Therefore I randomly choose a sample set from each file and save sample sets for further use. 
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+set.seed(123456)
+index <- rbinom(n = length(blogs), size = 1, prob = 0.02)
+blogs <- blogs[index==1]
+write.csv(blogs, file = "./en_US/sample/blogs.sample.csv", row.names = FALSE, col.names = FALSE)
+
+set.seed(123456)
+index <- rbinom(n = length(twitter), size = 1, prob = 0.02)
+twitter <- twitter[index==1]
+write.csv(twitter, file = "./en_US/sample/twitter.sample.csv", row.names = FALSE, col.names = FALSE)
+
+set.seed(123456)
+index <- rbinom(n = length(news), size = 1, prob = 0.02)
+news <- news[index==1]
+write.csv(news, file = "./en_US/sample/news.sample.csv", row.names = FALSE, col.names = FALSE)
+```
+
+### Data preprocessing
+Data preprocessing of text data mainly contains the following steps: transforming to lower case, removing punctuation, removing numbers, removing special characters, removing profanity words, removing stop words, stemming, and removing white space.
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+# combine three sample datasets into a corpus
+corpus <- Corpus(DirSource("./en_US/sample/"), readerControl = list(language="en_US"))
+corpus <- tm_map(corpus, PlainTextDocument)
+# transform to lower case
+corpus <- tm_map(corpus, content_transformer(tolower))
+# removing punctuation
+corpus<- tm_map(corpus,content_transformer(removePunctuation))
+# removing numbers
+corpus<- tm_map(corpus,content_transformer(removeNumbers))
+# removing special signs: [[:alnum:]] means [0-9A-Za-z]
+removespecial <- function(x) gsub("[^[0-9A-Za-z]]"," ",x)
+corpus<- tm_map(corpus, content_transformer(removespecial))
+# removing English stop words
+corpus<- tm_map(corpus,removeWords,stopwords("english"))
+# removing profanity words
+profanitylist <- readLines("./en_US/profanity.txt")
+corpus<- tm_map(corpus,removeWords,profanitylist)
+# stem
+corpus <- tm_map(corpus, stemDocument, language = "english")
+# removing white space
+corpus<- tm_map(corpus, stripWhitespace)
+```
+
+### NGram Tokenization
+#### Unigram Tokenization
+First, perform 1-gram tokenization, organizing a data frame which contains the information of each unique word and its frequency. 
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+# unigram
+unigram <- NGramTokenizer(corpus, control =Weka_control(min = 1, max = 1))
+unigram <- data.frame(table(unigram))
+unigram <-unigram[order(unigram$Freq, decreasing = TRUE),]
+colnames(unigram) <- c("Word","Freq")
+saveRDS(unigram, file = "./en_US/sample/unigram.Rda")
+```
+
+#### Bigram Tokenization
+Second, perform 2-gram tokenization, organizing a data frame which contains the information of each unique word pair and its frequency.
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+bigram <- NGramTokenizer(corpus, control =Weka_control(min = 2, max = 2))
+bigram <- data.frame(table(bigram))
+bigram <-bigram[order(bigram$Freq, decreasing = TRUE),]
+colnames(bigram) <- c("Word","Freq")
+saveRDS(bigram, file = "./en_US/sample/bigram.Rda")
+```
+
+#### Trigram Tokenization
+Second, perform 3-gram tokenization, organizing a data frame which contains the information of each unique word triple and its frequency.
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+trigram <- NGramTokenizer(corpus, control =Weka_control(min = 3, max = 3))
+trigram <- data.frame(table(trigram))
+trigram <-trigram[order(trigram$Freq, decreasing = TRUE),]
+colnames(trigram) <- c("Word","Freq")
+saveRDS(trigram, file = "./en_US/sample/trigram.Rda")
+```
+
+## Summary
+### Word frequency information
+First, plot a word cloud to help form a general impression of word frequency distribution.
+```{r, warning=FALSE, message=FALSE}
+wordcld <- wordcloud(corpus, scale=c(4,0.5), max.words=200, random.order=FALSE, 
+                     rot.per=0.4, use.r.layout=FALSE, colors=brewer.pal(8,'Dark2'))
+```
+
+Second, let's see the information of unique word and the top 20 word with highest frequency.
+```{r}
+length(unigram$Word)
+par(mar = c(5,4,2,2), las = 2)
+barplot( height = unigram$Freq[1:20], names.arg = unigram$Word[1:20], horiz = FALSE, col = heat.colors(20), 
+         main = "Top 20 Unigram Word" , ylab = "Frequency")
+```
+
+Third, it is very useful to know how many unique words are needed in a frequency sorted dictionary to cover a certain percentage of all word instances in the language. Therefore I calculate and plot the number of unique word vs. their coverage of total words.
+```{r, warning=FALSE, message=FALSE}
+unigram$ratio <- sapply(1:length(unigram$Word), function(x) sum(unigram$Freq[1:x]))
+unigram$ratio <- unigram$ratio*100/sum(unigram$Freq)
+unigram$number <- 1:length(unigram$Word)
+
+g <- ggplot(unigram, aes(x = number, y = ratio))
+g + geom_line() + labs(title = "Number of Unique Word vs. Their Coverage of Total Words") + labs(x = "Number of Unique Word", y = "Coverage of Total Words (%)")
+```
+
+From above figure, we can see that only around 2000 unique words can cover 50% of total words, and 20000 unique words can cover nearly 90% of total words. This provide important information for further development of modeling and prediction.
+
+### Word pairs information
+Now, let's see the information of unique word pair and the top 20 word pairs with the highest frequency.
+```{r}
+length(bigram$Word)
+par(mar = c(8,4,2,2), las = 2)
+barplot( height = bigram$Freq[1:20], names.arg = bigram$Word[1:20], horiz = FALSE, col = heat.colors(20), 
+         main = "Top 20 Bigram Word" , ylab = "Frequency")
+```
+
+### Word triples information
+Here we can see the information of unique word triple and the top 20 word triples with the highest frequency.
+```{r}
+length(trigram$Word)
+par(mar = c(10,4,2,2), las = 2)
+barplot( height = trigram$Freq[1:20], names.arg = trigram$Word[1:20], horiz = FALSE, col = heat.colors(20), 
+         main = "Top 20 Trigram Word" , ylab = "Frequency")
+
+```
+
+## Interesting findings and further plan
+#### 1. It costs a lot of time to preprocess and tokenize corpus, therefore finding a way to deal with time-consuming problem is quite important in further modeling and prediction (especially that I am only use 2% of the total data set right now).
+#### 2. Only 20000 unique word can cover nearly 90% of the total words. This shed light on how to make an effective and efficient prediction algorithm.
+#### 3. Current tokenization results do not contain stop words which are actually very common in English text. Inclusion of stop words may change the results. I will test what the results are after inclusion of stop words, and compare both version in future work.
+
